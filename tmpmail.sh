@@ -300,6 +300,76 @@ EOF
     $browser "$tmpmail_html_email"
 }
 
+view_email_html_body() {
+    # View an email by providing it's ID
+    #
+    # The first argument provided to this function will be the ID of the email
+    # that has been received
+    email_id="$1"
+    data=$(curl -sL "$tmpmail_api_url?action=readMessage&login=$username&domain=$domain&id=$email_id")
+
+    # After the data is retrieved using the API, we have to check if we got any emails.
+    # Luckily 1secmail's API is not complicated and returns 'Message not found' as plain text
+    # if our email address as not received any emails.
+    # If we received the error message from the API just quit because there is nothing to do
+    [ "$data" = "Message not found" ] && die "Message not found"
+
+    # We pass the $data to 'jq' which extracts the values
+    from=$(printf %s "$data" | jq -r ".from")
+    subject=$(printf %s "$data" | jq -r ".subject")
+    html_body=$(printf %s "$data" | jq -r ".htmlBody")
+    attachments=$(printf %s "$data" | jq -r ".attachments | length")
+    
+    # If you get an email that is in pure text, the .htmlBody field will be empty and
+    # we will need to get the content from .textBody instead
+    [ -z "$html_body" ] && html_body="<pre>$(printf %s "$data" | jq -r ".textBody")</pre>"
+
+    # Create the HTML with all the information that is relevant and then
+    # assigning that HTML to the variable html_mail. This is the best method
+    # to create a multiline variable
+    printf %s "$html_body"
+#     html_mail=$(cat <<EOF
+# <pre><b>To: </b>$email_address
+# <b>From: </b>$from
+# <b>Subject: </b>$subject</pre>
+# $html_body
+
+# EOF
+# )
+    
+#     if [ ! "$attachments" = "0" ]; then
+#         html_mail="$html_mail<br><b>[Attachments]</b><br>"
+
+#         index=1
+#         while [ "$index" -le "$attachments" ]; do
+#             filename=$(printf %s "$data" | jq -r ".attachments | .[$index-1] | .filename")
+#             link="$tmpmail_api_url?action=download&login=$username&domain=$domain&id=$email_id&file=$filename"
+#             html_link="<a href=$link download=$filename>$filename</a><br>"
+
+#             if [ "$raw_text" = true ]; then
+#                 # The actual url is way too long and does not look so nice in STDOUT.
+#                 # Therefore we will shortening it using is.gd so that it looks nicer.
+#                 link=$(curl -s -F"url=$link" "https://is.gd/create.php?format=simple")
+#                 html_mail="$html_mail$link  [$filename]<br>"
+#             else
+#                 html_mail="$html_mail$html_link"
+#             fi
+
+#             index=$((index + 1))
+#         done
+#     fi
+
+#     # Save the $html_mail into $tmpmail_html_email
+#     printf %s "$html_mail" >"$tmpmail_html_email"
+
+#     # If the '--text' flag is used, then use 'w3m' to convert the HTML of
+#     # the email to pure text by removing all the HTML tags
+#     [ "$raw_text" = true ] && w3m -dump "$tmpmail_html_email" && exit
+
+#     # Open up the HTML file using $browser. By default,
+#     # this will be 'w3m'.
+#     $browser "$tmpmail_html_email"
+}
 
 view_recent_email() {
     # View the most recent email.
@@ -310,6 +380,17 @@ view_recent_email() {
     # email, which the first line.
     mail_id=$(list_emails | head -3 | tail -1 | cut -d' ' -f 1)
     view_email "$mail_id"
+}
+
+view_recent_email_html_body() {
+    # View the most recent email.
+    #
+    # This is done by listing all the received email like you
+    # normally see on the terminal when running 'tmpmail'.
+    # We then grab the ID of the most recent
+    # email, which the first line.
+    mail_id=$(list_emails | head -3 | tail -1 | cut -d' ' -f 1)
+    view_email_html_body "$mail_id"
 }
 
 
@@ -388,6 +469,7 @@ main() {
             --text | -t) raw_text=true ;;
             --version) echo "$version" && exit ;;
             --recent | -r) view_recent_email && exit ;;
+            --recent-html | -R) view_recent_email_html_body && exit;;
             *[0-9]*)
                 # If the user provides number as an argument,
                 # assume its the ID of an email and try getting
